@@ -1,0 +1,4 @@
+*.npy
+*.png
+__pycache__/
+underwater_zed_*/
