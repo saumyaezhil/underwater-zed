@@ -14,25 +14,39 @@ init = sl.InitParameters()
 init.camera_resolution = sl.RESOLUTION.HD720
 init.camera_fps = 30
 init.depth_mode = sl.DEPTH_MODE.PERFORMANCE
-init.depth_stabilization = True
+init.depth_stabilization = 1
 init.coordinate_units = sl.UNIT.MILLIMETER
-init.enable_right_side_measure = True
+init.enable_right_side_measure = True # must be int
+
+timestamp = time.strftime("%Y%m%d_%H%M%S")
+record_path = f"underwater_record_{timestamp}.svo"
+
+record_params = sl.RecordingParameters(
+    record_path,
+    sl.SVO_COMPRESSION_MODE.LOSSLESS
+)
+
+status = zed.open(init)
+if status != sl.ERROR_CODE.SUCCESS:
+    print("Failed to open ZED")
+    exit(1)
+
+# Enable recording
+err = zed.enable_recording(record_params)
+if err != sl.ERROR_CODE.SUCCESS:
+    print("Recording failed:", err)
+    zed.close()
+    exit(1)
+
+print(f"Recording started → {record_path}")
+print("Press CTRL + Q to stop recording")
 
 runtime = sl.RuntimeParameters()
 runtime.confidence_threshold = 70
 runtime.texture_confidence_threshold = 100
 
-status = zed.open(init)
-if status != sl.ERROR_CODE.SUCCESS:
-    exit()
-
 image = sl.Mat()
 depth = sl.Mat()
-point_cloud = sl.Mat()
-
-saving = False
-base = "underwater_zed_" + time.strftime("%Y%m%d_%H%M%S")
-os.makedirs(base, exist_ok=True)
 
 def enhance(img):
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
@@ -50,41 +64,31 @@ def clean_depth(d):
     d[d < MIN_DEPTH] = 0
     return d
 
-count = 0
-
 while True:
     if zed.grab(runtime) == sl.ERROR_CODE.SUCCESS:
 
         zed.retrieve_image(image, sl.VIEW.LEFT)
         zed.retrieve_measure(depth, sl.MEASURE.DEPTH)
-        zed.retrieve_measure(point_cloud, sl.MEASURE.XYZRGBA)
 
-        img = image.get_data()
-        dmap = depth.get_data()
+        img = enhance(image.get_data())
+        dmap = clean_depth(depth.get_data())
 
-        img = enhance(img)
-        dmap = clean_depth(dmap)
-
-        vis = dmap.copy()
-        vis = cv2.normalize(vis, None, 0, 255, cv2.NORM_MINMAX)
+        vis = cv2.normalize(dmap, None, 0, 255, cv2.NORM_MINMAX)
         vis = vis.astype(np.uint8)
 
         cv2.imshow("RGB", img)
         cv2.imshow("Depth", vis)
 
-        key = cv2.waitKey(1) & 0xFF
+        key = cv2.waitKey(1)
 
-        if key == ord('s'):
-            saving = not saving
-
-        if key == ord('q'):
+        # CTRL + Q
+        if key == 17:
+            print("Stopping recording...")
             break
 
-        if saving:
-            cv2.imwrite(f"{base}/rgb_{count}.png", img)
-            np.save(f"{base}/depth_{count}.npy", dmap)
-            np.save(f"{base}/pc_{count}.npy", point_cloud.get_data())
-            count += 1
-
+zed.disable_recording()
 zed.close()
 cv2.destroyAllWindows()
+
+print("Recording saved successfully.")
+
