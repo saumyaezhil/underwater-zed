@@ -11,10 +11,7 @@ rgb_*.png
 depth_*.npy
 pc_*.npy
 
-Command to run: 
-```
-python3 underwater_zed.py
-```
+
 
 Command to run if cloning on to monitor: 
 ```
